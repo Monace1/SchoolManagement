@@ -1,0 +1,52 @@
+server:
+  port: 8764
+
+spring:
+  application:
+    name: student-service
+  cloud:
+    discovery:
+      enabled: true
+    loadbalancer:
+      ribbon:
+        enabled: false
+    circuitbreaker:
+      request:
+        timeout: 5000
+  datasource:
+    url: jdbc:mysql://localhost:3306/School
+    username: root
+    password: root
+  jpa:
+    hibernate:
+      ddl-auto: update
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+    instance-info-replication-interval-seconds: 10
+
+feign:
+  client:
+    config:
+      config-service:
+        connectTimeout: 5000
+        readTimeout: 5000
+        loggerLevel: ERROR
+
+hystrix:
+  command:
+    default:
+      execution:
+        timeout:
+          enabled: false
+
+
+  web:
+    cors:
+      allowed-origins: "*"
+      allowed-methods: "GET,POST,PUT,DELETE,OPTIONS"
+      allowed-headers: "*"
