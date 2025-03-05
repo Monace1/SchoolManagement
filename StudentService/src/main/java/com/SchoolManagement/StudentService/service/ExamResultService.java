@@ -19,12 +19,9 @@ public class ExamResultService {
 
     @Autowired
     private ExamResultRepository examResultRepository;
-
     @Autowired
     private StudentRepository studentRepository;
-
     private final FeignConfigurationClient feignConfigurationClient;
-
     @Autowired
     public ExamResultService(FeignConfigurationClient feignConfigurationClient) {
         this.feignConfigurationClient = feignConfigurationClient;
@@ -34,7 +31,7 @@ public class ExamResultService {
         List<ExamResult> savedResults = new ArrayList<>();
 
         for (CreateExamResultDto dto : dtos) {
-            Student student = studentRepository.findById(dto.getStudentId())
+            Student student = studentRepository.findByAdmissionNumber(dto.getAdmissionNumber())
                     .orElseThrow(() -> new RuntimeException("Student not found"));
 
             for (CreateExamResultDto.SubjectScore subjectScore : dto.getSubjectScores()) {
@@ -43,25 +40,24 @@ public class ExamResultService {
                 examResult.setSubjectId(subjectScore.getSubjectId());
                 examResult.setScore(subjectScore.getScore());
 
-                // Fetch the grade from the Feign client
                 if (examResult.getScore() != null) {
                     try {
                         String grade = feignConfigurationClient.findGradeForScore(examResult.getScore());
-                        System.out.println("📌 Debug: Grade fetched from FeignClient: " + grade);
+                        System.out.println(" Debug: Grade fetched from FeignClient: " + grade);
 
                         if (grade == null) {
-                            System.err.println("⚠️ Warning: FeignClient returned null for score: " + examResult.getScore());
+                            System.err.println("Warning: FeignClient returned null for score: " + examResult.getScore());
                         } else {
                             examResult.setGrade(grade);
                         }
                     } catch (Exception e) {
-                        System.err.println("❌ Error calling FeignClient: " + e.getMessage());
+                        System.err.println("Error calling FeignClient: " + e.getMessage());
                         e.printStackTrace();
                     }
                 }
 
                 savedResults.add(examResultRepository.save(examResult));
-                System.out.println("✅ ExamResult saved with grade: " + examResult.getGrade());
+                System.out.println(" ExamResult saved with grade: " + examResult.getGrade());
             }
         }
         return savedResults;

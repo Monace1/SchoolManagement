@@ -8,8 +8,13 @@ import com.SchoolManagement.StudentService.repository.ExamResultRepository;
 import com.SchoolManagement.StudentService.repository.StudentRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -19,26 +24,36 @@ import java.util.stream.Collectors;
 
 public class StudentService {
 
-    private final Random random = new Random();
+    private final PasswordEncoder passwordEncoder;
+
+    private final StudentRepository studentRepository;
+    private final FeignConfigurationClient feignClient;
 
     @Autowired
-    private  StudentRepository studentRepository;
+    public StudentService(StudentRepository studentRepository, FeignConfigurationClient feignClient, PasswordEncoder passwordEncoder) {
+        this.studentRepository = studentRepository;
+        this.feignClient = feignClient;
+        this.passwordEncoder=passwordEncoder;
+    }
+
+    private final Random random = new Random();
+
+
     @Autowired
     private  ExamResultRepository examResultRepository;
 
-    @Autowired
-    private  FeignConfigurationClient feignConfigurationClient;
+
 
     public SchoolClass getClassDetails(Long classId) {
-        return feignConfigurationClient.getClass(classId);
+        return feignClient.getClass(classId);
     }
 
     public Stream getStreamDetails(Long streamId) {
-        return feignConfigurationClient.getStream(streamId);
+        return feignClient.getStream(streamId);
     }
 
     public Subject getSubjectDetails(Long subjectId) {
-        return feignConfigurationClient.getSubject(subjectId);
+        return feignClient.getSubject(subjectId);
     }
 
     public Student registerStudent(StudentRegistrationDto dto) {
@@ -46,6 +61,7 @@ public class StudentService {
 
         student.setFirstName(dto.getFirstName());
         student.setLastName(dto.getLastName());
+        student.setPassword(passwordEncoder.encode(String.valueOf(dto.getAdmissionNumber())));
         student.setDateOfBirth(dto.getDateOfBirth());
         student.setSchoolClass(dto.getSchoolClass());
         student.setStream(dto.getStream());
@@ -62,7 +78,51 @@ public class StudentService {
         return studentRepository.save(student);
     }
 
-   /* public Student createStudent(Student student) throws InvalidDataException {
+    public Student assignSubjects(Integer admissionNumber, List<Long> subjectIds) {
+        Student student = studentRepository.findByAdmissionNumber(admissionNumber)
+                .orElseThrow(() -> new RuntimeException("Student not found"));
+
+        String subjectIdsStr = subjectIds.stream()
+                .map(String::valueOf)
+                .collect(Collectors.joining(","));
+
+        ResponseEntity<List<Subject>> response = feignClient.getSubjectsByIds(subjectIdsStr);
+
+        if (response.getBody() == null || response.getBody().isEmpty()) {
+            throw new RuntimeException("Subjects not found");
+        }
+
+        student.setSubjectIds(subjectIds);
+        return studentRepository.save(student);
+    }
+
+    /*public List<Student> getStudentsByClassAndStream(Long classId, Long streamId) {
+        return studentRepository.findBySchoolClass_IdAndStream_Id(classId, streamId);
+    }
+
+    public List<Student> getStudentsByStream(Long streamId) {
+        return studentRepository.findByStream_Id(streamId);
+    }
+
+    public List<Student> getStudentsByClass(Long classId) {
+        return studentRepository.findBySchoolClass_Id(classId);
+    }
+*/
+
+    public List<Subject> getStudentSubjects(Integer admissionNumber) {
+        Student student = studentRepository.findByAdmissionNumber(admissionNumber)
+                .orElseThrow(() -> new RuntimeException("Student not found"));
+
+        String subjectIdsStr = student.getSubjectIds().stream()
+                .map(String::valueOf)
+                .collect(Collectors.joining(","));
+
+        ResponseEntity<List<Subject>> response = feignClient.getSubjectsByIds(subjectIdsStr);
+        return response.getBody();
+    }
+
+
+    /* public Student createStudent(Student student) throws InvalidDataException {
         validateStudent(student);
         return studentRepository.save(student);
     }
@@ -77,7 +137,7 @@ public class StudentService {
         studentRepository.deleteById(studentId);
     }
 */
-    public StudentPerformanceReport generatePerformanceReport(Long studentId) {
+    /*public StudentPerformanceReport generatePerformanceReport(Long studentId) {
         Student student = getStudentOrThrow(studentId);
         List<ExamResult> examResults = examResultRepository.findByStudentId(studentId);
 
@@ -91,16 +151,34 @@ public class StudentService {
         report.setOverallGrade(calculateOverallGrade(performanceBySubject));
 
         return report;
+    }*/
+    public StudentPerformanceReport generatePerformanceReportByAdmissionNumber(Integer admissionNumber) {
+        Student student = studentRepository.findByAdmissionNumber(admissionNumber)
+                .orElseThrow(() -> new EntityNotFoundException("Student not found with admission number: " + admissionNumber));
+
+        List<ExamResult> examResults = examResultRepository.findByStudentId(student.getId());
+
+        StudentPerformanceReport report = new StudentPerformanceReport();
+        report.setStudentInfo(student);
+
+        Map<String, StudentPerformanceReport.SubjectPerformance> performanceBySubject =
+                calculateSubjectWisePerformance(examResults);
+
+        report.setSubjectPerformances(performanceBySubject);
+        report.setOverallGrade(calculateOverallGrade(performanceBySubject));
+
+        return report;
     }
+
 
     private Map<String, StudentPerformanceReport.SubjectPerformance> calculateSubjectWisePerformance(List<ExamResult> results) {
         return results.stream()
-                .filter(er -> er.getSubject() != null) // Filter out null subjects
+                .filter(er -> er.getSubject() != null)
                 .collect(Collectors.groupingBy(
                         er -> er.getSubject().getSubjectName(),
                         Collectors.collectingAndThen(
                                 Collectors.toList(),
-                                this::calculateSubjectPerformance // Method to calculate SubjectPerformance
+                                this::calculateSubjectPerformance
                         )
                 ));
     }
@@ -123,7 +201,7 @@ public class StudentService {
                 .average()
                 .orElse(0.0);
 
-        return feignConfigurationClient.findGradeForScore(averageScore);
+        return feignClient.findGradeForScore(averageScore);
     }
 
     private void validateStudent(Student student) throws InvalidDataException {
@@ -148,4 +226,6 @@ public class StudentService {
         return studentRepository.findById(studentId)
                 .orElseThrow(() -> new EntityNotFoundException("Student not found"));
     }
+
+
 }

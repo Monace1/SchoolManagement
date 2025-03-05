@@ -22,7 +22,7 @@ public enum Relationship {
     @JsonCreator
     public static Relationship fromString(String value) {
         if (value == null || value.trim().isEmpty()) {
-            return GUARDIAN; // Default value for empty or null input
+            return GUARDIAN;
         }
         for (Relationship relationship : Relationship.values()) {
             if (relationship.value.equalsIgnoreCase(value)) {
